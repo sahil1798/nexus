@@ -11,7 +11,7 @@ class PipelineStep:
     def __init__(self, server_name: str, tool_name: str, edge: GraphEdge = None):
         self.server_name = server_name
         self.tool_name = tool_name
-        self.edge = edge  # The edge leading INTO this step (None for first step)
+        self.edge = edge
 
     def __repr__(self):
         return f"{self.server_name}.{self.tool_name}"
@@ -63,60 +63,74 @@ class DiscoveryEngine:
         # Build a description of all known connections
         connections = ""
         for edge in self.edges:
-            connections += f"\n  {edge.source_server}.{edge.source_tool} → {edge.target_server}.{edge.target_tool}"
+            connections += f"\n  {edge.source_server}.{edge.source_tool} -> {edge.target_server}.{edge.target_tool}"
             connections += f" [{edge.compatibility_type}, confidence={edge.confidence}]"
-            if edge.translation_hint:
-                connections += f" (hint: {edge.translation_hint})"
 
-        prompt = f"""You are a pipeline planner. Given a user request and available MCP servers with their connections, determine the optimal pipeline.
+        prompt = f"""You are a pipeline planner. Given a user request and available MCP servers, determine the optimal pipeline.
 
 USER REQUEST: "{user_request}"
 
 AVAILABLE SERVERS:
 {capabilities}
 
-KNOWN CONNECTIONS (output of one tool can feed into input of another):
+KNOWN CONNECTIONS:
 {connections}
 
-Determine the best pipeline to fulfill this request.
-
-Return JSON in EXACTLY this format, nothing else:
+Return a JSON object with this EXACT structure (no extra text):
 {{
     "steps": [
-        {{
-            "server": "server-name",
-            "tool": "tool-name",
-            "reason": "why this step is needed"
-        }}
+        {{"server": "server-name", "tool": "tool-name", "reason": "why needed"}}
     ],
     "overall_confidence": 0.85,
-    "explanation": "brief explanation of the pipeline"
+    "explanation": "brief explanation"
 }}
 
 Rules:
-- Only use servers and tools that are listed above
-- Prefer paths with known connections
-- Order the steps logically (data flows from one to the next)
-- If the request cannot be fulfilled, return an empty steps list and explain why
+- Only use servers listed above
+- Order steps logically (data flows from one to next)
+- Keep the JSON simple and valid
 """
 
         raw = ask_gemini(prompt)
 
+        # Clean markdown code fences
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
         if raw.endswith("```"):
             raw = raw[:-3]
+        if raw.startswith("json"):
+            raw = raw[4:]
         raw = raw.strip()
 
-        parsed = json.loads(raw)
+        # Try to parse JSON, with fallback
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f"   ⚠️ JSON parse error, attempting fix...")
+            # Try to extract JSON from response
+            try:
+                start = raw.find('{')
+                end = raw.rfind('}') + 1
+                if start >= 0 and end > start:
+                    raw = raw[start:end]
+                    parsed = json.loads(raw)
+                else:
+                    raise e
+            except:
+                # Ultimate fallback: create a simple pipeline
+                print(f"   ⚠️ Using fallback pipeline")
+                parsed = self._create_fallback_pipeline(user_request)
 
         print(f"\n📋 Pipeline explanation: {parsed.get('explanation', 'N/A')}")
 
         # Build Pipeline object with edge references
         steps = []
-        for i, step_data in enumerate(parsed["steps"]):
-            server_name = step_data["server"]
-            tool_name = step_data["tool"]
+        for i, step_data in enumerate(parsed.get("steps", [])):
+            server_name = step_data.get("server", "")
+            tool_name = step_data.get("tool", "")
+
+            if not server_name or not tool_name:
+                continue
 
             # Find the edge connecting previous step to this step
             edge = None
@@ -125,9 +139,10 @@ Rules:
                 edge = self._find_edge(prev["server"], prev["tool"], server_name, tool_name)
 
             steps.append(PipelineStep(server_name, tool_name, edge))
-            print(f"   Step {i+1}: {server_name}.{tool_name} — {step_data['reason']}")
+            reason = step_data.get('reason', '')
+            print(f"   Step {i+1}: {server_name}.{tool_name} — {reason}")
 
-        pipeline = Pipeline(steps, parsed.get("overall_confidence", 0.0))
+        pipeline = Pipeline(steps, parsed.get("overall_confidence", 0.5))
         return pipeline
 
     def _find_edge(self, src_server: str, src_tool: str, tgt_server: str, tgt_tool: str) -> GraphEdge:
@@ -138,4 +153,35 @@ Rules:
                 edge.target_server == tgt_server and
                 edge.target_tool == tgt_tool):
                 return edge
+        # If exact match not found, try just server names
+        for edge in self.edges:
+            if edge.source_server == src_server and edge.target_server == tgt_server:
+                return edge
         return None
+
+    def _create_fallback_pipeline(self, request: str) -> dict:
+        """Create a fallback pipeline based on keywords in the request."""
+        steps = []
+        request_lower = request.lower()
+
+        # Detect needed servers from keywords
+        if any(w in request_lower for w in ["fetch", "get", "web", "url", "http"]):
+            steps.append({"server": "web-fetcher", "tool": "fetch_url", "reason": "Fetch web content"})
+
+        if any(w in request_lower for w in ["translate", "translation", "language"]):
+            steps.append({"server": "translator", "tool": "translate_text", "reason": "Translate content"})
+
+        if any(w in request_lower for w in ["summar", "condense", "brief"]):
+            steps.append({"server": "summarizer", "tool": "summarize_text", "reason": "Summarize content"})
+
+        if any(w in request_lower for w in ["sentiment", "emotion", "tone", "feel"]):
+            steps.append({"server": "sentiment-analyzer", "tool": "analyze_sentiment", "reason": "Analyze sentiment"})
+
+        if any(w in request_lower for w in ["slack", "post", "send", "message"]):
+            steps.append({"server": "slack-sender", "tool": "send_slack_message", "reason": "Post to Slack"})
+
+        return {
+            "steps": steps,
+            "overall_confidence": 0.7,
+            "explanation": "Fallback pipeline based on keywords"
+        }

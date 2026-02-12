@@ -6,11 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.14.3",
+    "fastapi>=0.129.0",
     "google-genai>=1.62.0",
     "httpx>=0.28.1",
     "mcp[cli]>=1.26.0",
+    "numpy>=2.4.2",
     "openai>=2.20.0",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
+    "scikit-learn>=1.8.0",
     "slack-sdk>=3.40.0",
+    "uvicorn>=0.40.0",
 ]

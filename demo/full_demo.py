@@ -34,7 +34,7 @@ async def main():
 
     # Build initial graph
     print("\n📊 Building capability graph...")
-    graph.build_from_servers(registry.list_servers())
+    graph.build_edges(registry.servers, incremental=True)
 
     # DEMO PART 2: Execute first pipeline (with translation)
     print("\n" + "=" * 70)
@@ -69,7 +69,7 @@ async def main():
     # Rebuild graph with new server
     print("\n📊 Rebuilding capability graph with new server...")
     graph = CapabilityGraph()
-    graph.build_from_servers(registry.list_servers())
+    graph.build_edges(registry.servers, incremental=True)
 
     # DEMO PART 4: Enhanced pipeline with sentiment
     print("\n" + "=" * 70)
