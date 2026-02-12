@@ -1,0 +1,391 @@
+{
+  "servers": {
+    "web-fetcher": {
+      "name": "web-fetcher",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "servers/web-fetcher/server.py"
+      ],
+      "tools": [
+        {
+          "name": "fetch_url",
+          "description": "\n    Fetches the textual content of a web page given its URL.\n    Returns the extracted readable text, stripping HTML tags.\n    Useful for web scraping, content extraction, news reading, and research.\n    Supports any publicly accessible URL.\n\n    Args:\n        url: The full URL of the web page to fetch (e.g., https://example.com)\n\n    Returns:\n        A dictionary containing:\n        - content: The extracted plain text from the page\n        - fetched_at: ISO timestamp of when the fetch occurred\n        - content_length: Character count of the extracted text\n        - source_url: The URL that was fetched\n    ",
+          "input_schema": {
+            "properties": {
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "title": "fetch_urlArguments",
+            "type": "object"
+          },
+          "output_schema": {}
+        }
+      ],
+      "profile": {
+        "plain_language_summary": "This server retrieves the text content from a given URL, removing HTML formatting and providing details like fetch time and content length. It essentially turns a webpage into plain text.",
+        "capability_tags": [
+          "web scraping",
+          "text extraction",
+          "HTML stripping",
+          "URL fetching",
+          "content retrieval"
+        ],
+        "input_concepts": [
+          "web page URL"
+        ],
+        "output_concepts": [
+          "plain text content",
+          "fetch timestamp",
+          "content length",
+          "source URL"
+        ],
+        "use_cases": [
+          "Summarizing news articles",
+          "Extracting product descriptions from e-commerce sites",
+          "Archiving web page content for research",
+          "Monitoring website content for changes",
+          "Populating a knowledge base with information from websites",
+          "Extracting contact information from a webpage",
+          "Analyzing website content for sentiment or trends"
+        ],
+        "compatible_with": [
+          "NLP tools (sentiment analysis, topic modeling, named entity recognition)",
+          "Summarization tools",
+          "Translation tools",
+          "Data analysis tools (for content length analysis)",
+          "Archiving tools",
+          "Content comparison tools (to detect changes over time)",
+          "URL validation tools (upstream)",
+          "Search engines (upstream)"
+        ],
+        "domain": "web"
+      }
+    },
+    "summarizer": {
+      "name": "summarizer",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "servers/summarizer/server.py"
+      ],
+      "tools": [
+        {
+          "name": "summarize_text",
+          "description": "\n    Condenses long text into a concise summary with key points.\n    Useful for quickly understanding articles, documents, reports,\n    blog posts, and any lengthy written content.\n\n    Args:\n        text: The long text to summarize\n        max_sentences: Maximum number of sentences in the summary (default 3)\n\n    Returns:\n        A dictionary containing:\n        - summary: A concise summary of the input text\n        - key_points: A list of the most important points extracted from the text\n        - original_length: Character count of the original text\n        - summary_length: Character count of the summary\n    ",
+          "input_schema": {
+            "properties": {
+              "text": {
+                "title": "Text",
+                "type": "string"
+              },
+              "max_sentences": {
+                "default": 3,
+                "title": "Max Sentences",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "title": "summarize_textArguments",
+            "type": "object"
+          },
+          "output_schema": {}
+        }
+      ],
+      "profile": {
+        "plain_language_summary": "This server takes a long piece of text and creates a short summary, highlighting the most important parts.",
+        "capability_tags": [
+          "text summarization",
+          "content condensation",
+          "information extraction",
+          "natural language processing",
+          "text analysis"
+        ],
+        "input_concepts": [
+          "long text documents",
+          "articles",
+          "reports",
+          "blog posts",
+          "transcripts"
+        ],
+        "output_concepts": [
+          "text summary",
+          "key points",
+          "condensed information"
+        ],
+        "use_cases": [
+          "quickly understanding news articles",
+          "summarizing research papers",
+          "generating executive summaries for reports",
+          "creating concise summaries for presentations",
+          "extracting key takeaways from meeting transcripts",
+          "summarizing customer feedback",
+          "summarizing legal documents",
+          "summarizing code documentation"
+        ],
+        "compatible_with": [
+          "text extraction tools (upstream)",
+          "translation services (downstream)",
+          "sentiment analysis tools (downstream)",
+          "topic modeling tools (downstream)",
+          "question answering systems (downstream)",
+          "text-to-speech systems (downstream)",
+          "document classification tools (upstream)"
+        ],
+        "domain": "NLP"
+      }
+    },
+    "slack-sender": {
+      "name": "slack-sender",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "servers/slack-sender/server.py"
+      ],
+      "tools": [
+        {
+          "name": "send_slack_message",
+          "description": "\n    Sends a message to a specified Slack channel.\n    Useful for notifications, alerts, team communication,\n    automated reporting, and delivering content to team members.\n    The bot must be invited to the target channel before sending.\n\n    Args:\n        channel: The Slack channel to post to (e.g., \"#team-updates\" or \"team-updates\")\n        message_body: The message text to send. Supports Slack markdown formatting.\n\n    Returns:\n        A dictionary containing:\n        - success: Whether the message was sent successfully\n        - channel: The channel the message was posted to\n        - timestamp: The Slack message timestamp (unique message ID)\n        - message_preview: First 100 characters of the sent message\n    ",
+          "input_schema": {
+            "properties": {
+              "channel": {
+                "title": "Channel",
+                "type": "string"
+              },
+              "message_body": {
+                "title": "Message Body",
+                "type": "string"
+              }
+            },
+            "required": [
+              "channel",
+              "message_body"
+            ],
+            "title": "send_slack_messageArguments",
+            "type": "object"
+          },
+          "output_schema": {}
+        }
+      ],
+      "profile": {
+        "plain_language_summary": "This server sends messages to specified Slack channels, enabling automated notifications and team communication.",
+        "capability_tags": [
+          "slack",
+          "messaging",
+          "notification",
+          "communication",
+          "automation",
+          "integration"
+        ],
+        "input_concepts": [
+          "slack channel",
+          "message content"
+        ],
+        "output_concepts": [
+          "slack message",
+          "message status",
+          "message timestamp"
+        ],
+        "use_cases": [
+          "sending alerts from a monitoring system to a dedicated Slack channel",
+          "notifying a team when a build completes in a CI/CD pipeline",
+          "automatically posting daily reports to a specific Slack channel",
+          "sending personalized welcome messages to new team members joining a Slack workspace",
+          "relaying customer service chatbot responses to a human agent via Slack"
+        ],
+        "compatible_with": [
+          "log aggregation services (upstream, provides alert triggers)",
+          "monitoring systems (upstream, provides alert triggers)",
+          "CI/CD pipelines (upstream, provides build status)",
+          "report generation tools (upstream, provides report content)",
+          "natural language understanding (NLU) systems (upstream, interprets user intent and formulates messages)",
+          "data analysis tools (upstream, providing data summaries to be sent)",
+          "incident management platforms (downstream, for creating tickets based on Slack alerts)",
+          "alert escalation systems (downstream, for escalating alerts if not acknowledged)",
+          "knowledge management systems (downstream, for archiving Slack conversations)"
+        ],
+        "domain": "communication"
+      }
+    },
+    "sentiment-analyzer": {
+      "name": "sentiment-analyzer",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "servers/sentiment-analyzer/server.py"
+      ],
+      "tools": [
+        {
+          "name": "analyze_sentiment",
+          "description": "\n    Analyzes the sentiment and emotional tone of a given text.\n    Useful for understanding the mood of articles, reviews, social media posts,\n    customer feedback, blog posts, and any written content.\n    Detects whether content is positive, negative, or neutral and identifies\n    specific emotional tones.\n\n    Args:\n        text: The text to analyze for sentiment and tone\n\n    Returns:\n        A dictionary containing:\n        - sentiment: The overall sentiment (positive, negative, neutral, mixed)\n        - confidence: Confidence score from 0.0 to 1.0\n        - tone_words: List of words describing the emotional tone\n        - explanation: Brief explanation of why this sentiment was detected\n    ",
+          "input_schema": {
+            "properties": {
+              "text": {
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "title": "analyze_sentimentArguments",
+            "type": "object"
+          },
+          "output_schema": {}
+        }
+      ],
+      "profile": {
+        "plain_language_summary": "This server analyzes text to determine its sentiment (positive, negative, or neutral) and identify the emotional tone expressed within it.",
+        "capability_tags": [
+          "sentiment analysis",
+          "emotional tone detection",
+          "natural language processing",
+          "text analysis",
+          "text processing"
+        ],
+        "input_concepts": [
+          "text",
+          "written content",
+          "customer reviews",
+          "social media posts",
+          "articles",
+          "blog posts",
+          "documents"
+        ],
+        "output_concepts": [
+          "sentiment",
+          "emotional tone",
+          "sentiment score",
+          "confidence score",
+          "explanation of sentiment"
+        ],
+        "use_cases": [
+          "Analyzing customer reviews to understand satisfaction levels",
+          "Monitoring social media for brand sentiment and emerging issues",
+          "Evaluating the emotional impact of marketing campaigns",
+          "Identifying potentially harmful or inappropriate content",
+          "Analyzing employee feedback to gauge morale",
+          "Detecting bias in news articles",
+          "Assessing the emotional tone of literary works",
+          "Prioritizing customer service tickets based on sentiment expressed in the request",
+          "Categorizing news articles by sentiment"
+        ],
+        "compatible_with": [
+          "Translation services (upstream, to analyze sentiment in different languages)",
+          "Topic extraction services (upstream, to analyze sentiment by topic)",
+          "Summarization services (upstream, to analyze sentiment of summaries)",
+          "Content moderation services (downstream, to automatically flag negative content)",
+          "Alerting systems (downstream, to trigger alerts based on negative sentiment exceeding a threshold)",
+          "Report generation services (downstream, to create sentiment analysis reports)",
+          "Data visualization tools (downstream, to visualize sentiment trends)",
+          "Chatbots (downstream, to adapt responses based on customer sentiment)",
+          "A/B testing platforms (to determine which version elicits a more positive response)"
+        ],
+        "domain": "NLP"
+      }
+    }
+  },
+  "edges": [
+    {
+      "source_server": "web-fetcher",
+      "source_tool": "fetch_url",
+      "target_server": "summarizer",
+      "target_tool": "summarize_text",
+      "compatibility_type": "translatable",
+      "confidence": 0.95,
+      "translation_hint": "Tool A returns a dictionary containing 'content'. Tool B expects a 'text' argument.  The 'content' field from Tool A's output dictionary should be mapped to the 'text' argument in Tool B's input."
+    },
+    {
+      "source_server": "web-fetcher",
+      "source_tool": "fetch_url",
+      "target_server": "slack-sender",
+      "target_tool": "send_slack_message",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A's 'content' field should be mapped to Tool B's 'message_body' field. The user will need to provide the 'channel' argument to Tool B."
+    },
+    {
+      "source_server": "web-fetcher",
+      "source_tool": "fetch_url",
+      "target_server": "sentiment-analyzer",
+      "target_tool": "analyze_sentiment",
+      "compatibility_type": "translatable",
+      "confidence": 0.95,
+      "translation_hint": "Tool A returns a dictionary containing the 'content' field which holds the text. Tool B expects a 'text' argument. Therefore, the 'content' field from Tool A's output should be passed as the value for Tool B's 'text' argument."
+    },
+    {
+      "source_server": "summarizer",
+      "source_tool": "summarize_text",
+      "target_server": "slack-sender",
+      "target_tool": "send_slack_message",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A returns a dictionary. The 'summary' field of the Tool A's output dictionary can be used as the 'message_body' for Tool B. The user also needs to specify the 'channel' for Tool B."
+    },
+    {
+      "source_server": "summarizer",
+      "source_tool": "summarize_text",
+      "target_server": "sentiment-analyzer",
+      "target_tool": "analyze_sentiment",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A returns a dictionary. Tool B requires a string as input. Use the 'summary' field from Tool A's output dictionary as the input 'text' for Tool B."
+    },
+    {
+      "source_server": "slack-sender",
+      "source_tool": "send_slack_message",
+      "target_server": "web-fetcher",
+      "target_tool": "fetch_url",
+      "compatibility_type": "translatable",
+      "confidence": 0.7,
+      "translation_hint": "Tool A's output dictionary contains the Slack message timestamp, channel, and success status, as well as a preview of the message. Tool B requires a 'url' as input. To make them compatible, the 'message_preview' value from Tool A, if it contains a URL, *might* be usable as the 'url' for Tool B. However, it is not guaranteed that the Slack message *will* contain a URL. Thus, this is 'translatable' instead of 'direct', and the compatibility is conditional based on the message contents. If Tool A's message does not contain a URL, the chain will fail."
+    },
+    {
+      "source_server": "slack-sender",
+      "source_tool": "send_slack_message",
+      "target_server": "summarizer",
+      "target_tool": "summarize_text",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A's output is a dictionary. Tool B requires a 'text' argument, which is a string. We can extract the 'message_preview' value from Tool A's output and use that as the input to Tool B's 'text' argument. Also, the success, channel and timestamp are not relevant to the summarizer."
+    },
+    {
+      "source_server": "slack-sender",
+      "source_tool": "send_slack_message",
+      "target_server": "sentiment-analyzer",
+      "target_tool": "analyze_sentiment",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A's output is a dictionary. The 'message_preview' key contains the first 100 characters of the message, which can be used as the 'text' input for Tool B. Alternatively, the 'message_body' passed as an argument to Tool A could be persisted and passed as 'text' to Tool B for complete analysis."
+    },
+    {
+      "source_server": "sentiment-analyzer",
+      "source_tool": "analyze_sentiment",
+      "target_server": "summarizer",
+      "target_tool": "summarize_text",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A returns a dictionary; extract the original input text from the text argument to feed into Tool B."
+    },
+    {
+      "source_server": "sentiment-analyzer",
+      "source_tool": "analyze_sentiment",
+      "target_server": "slack-sender",
+      "target_tool": "send_slack_message",
+      "compatibility_type": "translatable",
+      "confidence": 0.9,
+      "translation_hint": "Tool A's output is a dictionary. The 'explanation' key from Tool A's dictionary should be used as the 'message_body' for Tool B. The channel needs to be a user-specified input to Tool B."
+    }
+  ]
+}

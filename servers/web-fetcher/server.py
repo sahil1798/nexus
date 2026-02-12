@@ -53,3 +53,4 @@ def fetch_url(url: str) -> dict:
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
+
