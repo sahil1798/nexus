@@ -65,6 +65,23 @@ class PipelineExecutor:
                 else:
                     spec = self.translation_engine.generate_spec(step.edge, current_data, target_schema)
                     step_input = self.translation_engine.apply_translation(spec, current_data, context)
+
+                    # Fallback: fill missing required fields from source output
+                    required = target_schema.get("required", [])
+                    TEXT_ALIASES = ["content", "translated_text", "summary", "text", "result"]
+                    for field in required:
+                        if field not in step_input or not step_input[field]:
+                            # Try common text field aliases from source output
+                            if field == "text":
+                                for alias in TEXT_ALIASES:
+                                    if alias in current_data and current_data[alias]:
+                                        step_input["text"] = current_data[alias]
+                                        print(f"   ⚡ Fallback: mapped '{alias}' → 'text'")
+                                        break
+                            # Try exact field name match from source
+                            elif field in current_data:
+                                step_input[field] = current_data[field]
+                                print(f"   ⚡ Fallback: mapped '{field}' directly")
             else:
                 step_input = current_data
 
