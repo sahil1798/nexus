@@ -298,6 +298,7 @@ async def execute_pipeline(req: PipelineRequest):
             "success": r.success,
             "duration": round(r.duration, 2),
             "error": r.error,
+            "output": r.output_data if r.success else None,
         })
     
     all_success = all(r.success for r in results)

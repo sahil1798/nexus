@@ -181,12 +181,101 @@ export default function PipelinesTab({ onExecuted }) {
           </div>
 
           {/* Final Output */}
-          {result?.final_output && (
+          {result && (
             <div className="mt-4 pt-4 border-t border-white/5" data-testid="pipeline-output">
-              <h4 className="text-xs font-medium text-white/50 mb-2">Final Output</h4>
-              <pre className="text-xs font-mono text-white/40 bg-black/40 rounded-lg p-3 overflow-auto max-h-40">
-                {JSON.stringify(result.final_output, null, 2)}
-              </pre>
+              <h4 className="text-xs font-medium text-white/50 mb-3">Pipeline Results</h4>
+              <div className="space-y-3">
+
+                {/* Summary */}
+                {result.steps?.find(s => s.server === 'summarizer' && s.output)?.output && (() => {
+                  const data = result.steps.find(s => s.server === 'summarizer').output;
+                  return (
+                    <div className="bg-sky-500/5 border border-sky-500/10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm">📝</span>
+                        <span className="text-xs font-medium text-sky-400">Summary</span>
+                      </div>
+                      <p className="text-sm text-white/70 leading-relaxed">{data.summary}</p>
+                      {data.key_points?.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-white/5">
+                          <span className="text-[10px] text-white/30 uppercase tracking-wider">Key Points</span>
+                          <ul className="mt-1.5 space-y-1">
+                            {data.key_points.map((p, i) => (
+                              <li key={i} className="text-xs text-white/50 flex items-start gap-2">
+                                <span className="text-sky-400/60 mt-0.5">•</span>
+                                <span>{p}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Sentiment */}
+                {result.steps?.find(s => s.server === 'sentiment-analyzer' && s.output)?.output && (() => {
+                  const data = result.steps.find(s => s.server === 'sentiment-analyzer').output;
+                  const emoji = data.sentiment === 'positive' ? '😊' : data.sentiment === 'negative' ? '😟' : '😐';
+                  const color = data.sentiment === 'positive' ? 'emerald' : data.sentiment === 'negative' ? 'red' : 'yellow';
+                  return (
+                    <div className={`bg-${color}-500/5 border border-${color}-500/10 rounded-lg p-4`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{emoji}</span>
+                          <span className="text-xs font-medium text-white/60">Sentiment</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold text-${color}-400`}>{data.sentiment?.charAt(0).toUpperCase() + data.sentiment?.slice(1)}</span>
+                          {data.confidence && <span className="text-[10px] text-white/30">{(data.confidence * 100).toFixed(0)}%</span>}
+                        </div>
+                      </div>
+                      {data.explanation && <p className="text-xs text-white/40 mt-2">{data.explanation}</p>}
+                    </div>
+                  );
+                })()}
+
+                {/* Translation */}
+                {result.steps?.find(s => s.server === 'translator' && s.output)?.output && (() => {
+                  const data = result.steps.find(s => s.server === 'translator').output;
+                  return (
+                    <div className="bg-purple-500/5 border border-purple-500/10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm">🌐</span>
+                        <span className="text-xs font-medium text-purple-400">
+                          Translation {data.source_language && data.target_language ? `(${data.source_language} → ${data.target_language})` : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-white/70 leading-relaxed line-clamp-4">{data.translated_text?.slice(0, 500)}{data.translated_text?.length > 500 ? '...' : ''}</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Slack delivery */}
+                {result.steps?.find(s => s.server === 'slack-sender' && s.output)?.output && (() => {
+                  const data = result.steps.find(s => s.server === 'slack-sender').output;
+                  return (
+                    <div className={`${data.success ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-red-500/5 border-red-500/10'} border rounded-lg p-4`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{data.success ? '✅' : '❌'}</span>
+                          <span className="text-xs font-medium text-white/60">Slack Delivery</span>
+                        </div>
+                        <span className="text-xs text-white/30">{data.channel}</span>
+                      </div>
+                      {data.error && <p className="text-xs text-red-400/70 mt-1">{data.error}</p>}
+                      {data.success && <p className="text-xs text-white/30 mt-1">Message posted to {data.channel}</p>}
+                    </div>
+                  );
+                })()}
+
+                {/* Fallback: show raw JSON if no known step types matched */}
+                {!result.steps?.some(s => ['summarizer', 'sentiment-analyzer', 'translator', 'slack-sender'].includes(s.server) && s.output) && (
+                  <pre className="text-xs font-mono text-white/40 bg-black/40 rounded-lg p-3 overflow-auto max-h-40">
+                    {JSON.stringify(result.final_output, null, 2)}
+                  </pre>
+                )}
+              </div>
             </div>
           )}
         </div>
