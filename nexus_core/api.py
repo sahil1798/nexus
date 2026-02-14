@@ -250,10 +250,24 @@ async def execute_pipeline(req: PipelineRequest):
     if not graph.edges:
         raise HTTPException(status_code=400, detail="Graph is empty")
     
+    # Extract URL from request text if not provided in form
+    url = req.url
+    if not url:
+        import re
+        # Try to find explicit URLs
+        url_match = re.search(r'https?://[^\s,]+', req.request)
+        if url_match:
+            url = url_match.group(0)
+        else:
+            # Try to find domain-like patterns (e.g., "CNN.com", "example.org")
+            domain_match = re.search(r'\b([a-zA-Z0-9-]+\.(com|org|net|io|dev|co|ai|news))\b', req.request)
+            if domain_match:
+                url = f"https://{domain_match.group(1)}"
+    
     # Build full request
     full_request = req.request
-    if req.url and "fetch" not in req.request.lower():
-        full_request = f"Fetch content from {req.url}, then {req.request}"
+    if url and "fetch" not in req.request.lower():
+        full_request = f"Fetch content from {url}, then {req.request}"
     
     # Build context
     context = {"channel": req.channel or "#team-updates"}
@@ -264,8 +278,8 @@ async def execute_pipeline(req: PipelineRequest):
     
     # Build initial input
     initial_input = {}
-    if req.url:
-        initial_input["url"] = req.url
+    if url:
+        initial_input["url"] = url
     
     # Discover pipeline
     engine = DiscoveryEngine(registry.servers, graph.edges)
