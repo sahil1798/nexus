@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API Router with /api prefix (frontend expects all endpoints under /api/)
+api_router = APIRouter(prefix="/api")
+
 
 # =============================================================================
 # Request/Response Models
@@ -88,6 +91,10 @@ class DiscoverRequest(BaseModel):
 # =============================================================================
 
 @app.get("/")
+async def app_root():
+    return {"service": "NEXUS", "status": "healthy", "docs": "/docs"}
+
+@api_router.get("/")
 async def root():
     """API root — health check."""
     return {
@@ -97,7 +104,7 @@ async def root():
     }
 
 
-@app.get("/status")
+@api_router.get("/status")
 async def get_status():
     """Get NEXUS system status."""
     stats = db.get_stats()
@@ -116,7 +123,7 @@ async def get_status():
 # Server Management
 # =============================================================================
 
-@app.get("/servers")
+@api_router.get("/servers")
 async def list_servers():
     """List all registered MCP servers."""
     servers = []
@@ -133,7 +140,7 @@ async def list_servers():
     return {"total": len(servers), "servers": servers}
 
 
-@app.post("/servers/register")
+@api_router.post("/servers/register")
 async def register_server(req: ServerRegistration, background_tasks: BackgroundTasks):
     """Register a new MCP server."""
     try:
@@ -153,7 +160,7 @@ async def register_server(req: ServerRegistration, background_tasks: BackgroundT
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/servers/{name}")
+@api_router.delete("/servers/{name}")
 async def unregister_server(name: str):
     """Remove a server from NEXUS."""
     if name not in registry.servers:
@@ -174,7 +181,7 @@ async def rebuild_graph():
 # Graph Operations
 # =============================================================================
 
-@app.get("/graph")
+@api_router.get("/graph")
 async def get_graph():
     """Get the capability graph."""
     edges = []
@@ -192,7 +199,7 @@ async def get_graph():
     }
 
 
-@app.post("/graph/rebuild")
+@api_router.post("/graph/rebuild")
 async def trigger_rebuild(background_tasks: BackgroundTasks):
     """Trigger a graph rebuild."""
     background_tasks.add_task(rebuild_graph)
@@ -203,7 +210,7 @@ async def trigger_rebuild(background_tasks: BackgroundTasks):
 # Pipeline Operations
 # =============================================================================
 
-@app.post("/discover")
+@api_router.post("/discover")
 async def discover_pipeline(req: DiscoverRequest):
     """Discover a pipeline from natural language (without executing)."""
     if not registry.servers:
@@ -234,7 +241,7 @@ async def discover_pipeline(req: DiscoverRequest):
     }
 
 
-@app.post("/execute")
+@api_router.post("/execute")
 async def execute_pipeline(req: PipelineRequest):
     """Discover and execute a pipeline."""
     if not registry.servers:
@@ -297,7 +304,7 @@ async def execute_pipeline(req: PipelineRequest):
 # Pipeline History
 # =============================================================================
 
-@app.get("/history")
+@api_router.get("/history")
 async def get_pipeline_history(limit: int = 20):
     """Get recent pipeline execution history."""
     history = db.get_pipeline_history(limit=limit)
@@ -307,6 +314,9 @@ async def get_pipeline_history(limit: int = 20):
 # =============================================================================
 # Run Server
 # =============================================================================
+
+# Include the API router
+app.include_router(api_router)
 
 if __name__ == "__main__":
     import uvicorn

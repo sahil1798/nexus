@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #050505;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Glow */
+.glow-text {
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glow-border {
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+.neon-glow {
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.2), 0 0 60px rgba(56, 189, 248, 0.1);
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); opacity: 0.4; }
+  50% { transform: translateY(-20px); opacity: 0.8; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(56, 189, 248, 0.6); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Sidebar */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+.sidebar-link:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+.sidebar-link.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+}
+
+/* Stat colors */
+.text-sky { color: #38bdf8; }
+.text-purple { color: #a78bfa; }
+.text-emerald { color: #34d399; }
+.text-amber { color: #fbbf24; }

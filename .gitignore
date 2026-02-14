@@ -8,22 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
-
-
-# Virtual Environment
 venv/
-.env/
 ENV/
 env/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-
 # Distribution / packaging
-build/
-dist/
 *.egg-info/
 
 # Logs
@@ -38,3 +27,20 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Windows Zone.Identifier files
+*.Zone.Identifier
+
+# Frontend
+ui/node_modules/
+ui/build/
+ui/.env
+
+# Emergent staging folder (can be deleted)
+nexusui/
+
+# SQLite database (will be created at runtime)
+data/*.db
+
+# Test files
+test_nexus.py

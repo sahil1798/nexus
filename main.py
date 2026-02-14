@@ -1,11 +1,16 @@
-from mcp.server.fastmcp import FastMCP
+"""
+NEXUS — The Intelligent MCP Broker
+===================================
+Entry point for the NEXUS backend API server.
+Run: uv run python main.py
+"""
 
-mcp = FastMCP("test-server")
-
-@mcp.tool()
-def hello(name: str) -> str:
-    """Says hello to someone. A simple test tool."""
-    return f"Hello, {name}! MCP is working."
+import uvicorn
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    uvicorn.run(
+        "nexus_core.api:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
