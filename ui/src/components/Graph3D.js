@@ -82,8 +82,9 @@ export default function Graph3D({ edges = [], servers = [] }) {
         linkDirectionalParticleColor={() => '#38bdf8'}
         enableNodeDrag={true}
         enableNavigationControls={true}
-        cooldownTicks={100}
-        onEngineStop={() => graphRef.current.zoomToFit(400)}
+        warmupTicks={100}
+        cooldownTicks={0}
+        autoRotate={false}
       />
 
       {/* Legend */}
