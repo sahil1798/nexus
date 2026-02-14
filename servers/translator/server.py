@@ -30,18 +30,28 @@ def translate_text(text: str, source_language: str, target_language: str) -> dic
         - original_length: Character count of the original text
         - translated_length: Character count of the translated text
     """
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=f"You are a professional translator. Translate the following text from {source_language} to {target_language}. Return ONLY the translated text, nothing else. Preserve the original formatting and tone.\n\nText to translate:\n{text}",
-    )
+    original_length = len(text)
 
-    translated = response.text.strip()
+    # Truncate very long text to avoid hitting token limits
+    MAX_CHARS = 30000
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS] + "\n\n[Text truncated for translation]"
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f"You are a professional translator. Translate the following text from {source_language} to {target_language}. Return ONLY the translated text, nothing else. Preserve the original formatting and tone.\n\nText to translate:\n{text}",
+        )
+
+        translated = response.text.strip()
+    except Exception as e:
+        translated = f"[Translation failed: {str(e)}]"
 
     return {
         "translated_text": translated,
         "source_language": source_language,
         "target_language": target_language,
-        "original_length": len(text),
+        "original_length": original_length,
         "translated_length": len(translated),
     }
 
