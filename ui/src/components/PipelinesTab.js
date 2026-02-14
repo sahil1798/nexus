@@ -187,16 +187,18 @@ export default function PipelinesTab({ onExecuted }) {
               <div className="space-y-3">
 
                 {/* Summary */}
-                {result.steps?.find(s => s.server === 'summarizer' && s.output)?.output && (() => {
-                  const data = result.steps.find(s => s.server === 'summarizer').output;
+                {(() => {
+                  const step = result.steps?.find(s => s.server === 'summarizer' && s.output);
+                  if (!step?.output) return null;
+                  const data = step.output;
                   return (
                     <div className="bg-sky-500/5 border border-sky-500/10 rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm">📝</span>
                         <span className="text-xs font-medium text-sky-400">Summary</span>
                       </div>
-                      <p className="text-sm text-white/70 leading-relaxed">{data.summary}</p>
-                      {data.key_points?.length > 0 && (
+                      <p className="text-sm text-white/70 leading-relaxed">{data.summary || 'No summary available'}</p>
+                      {data.key_points && data.key_points.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-white/5">
                           <span className="text-[10px] text-white/30 uppercase tracking-wider">Key Points</span>
                           <ul className="mt-1.5 space-y-1">
@@ -214,20 +216,25 @@ export default function PipelinesTab({ onExecuted }) {
                 })()}
 
                 {/* Sentiment */}
-                {result.steps?.find(s => s.server === 'sentiment-analyzer' && s.output)?.output && (() => {
-                  const data = result.steps.find(s => s.server === 'sentiment-analyzer').output;
-                  const emoji = data.sentiment === 'positive' ? '😊' : data.sentiment === 'negative' ? '😟' : '😐';
-                  const color = data.sentiment === 'positive' ? 'emerald' : data.sentiment === 'negative' ? 'red' : 'yellow';
+                {(() => {
+                  const step = result.steps?.find(s => s.server === 'sentiment-analyzer' && s.output);
+                  if (!step?.output) return null;
+                  const data = step.output;
+                  const sentiment = (data.sentiment || 'neutral').toLowerCase();
+                  const isPositive = sentiment === 'positive';
+                  const isNegative = sentiment === 'negative';
                   return (
-                    <div className={`bg-${color}-500/5 border border-${color}-500/10 rounded-lg p-4`}>
+                    <div className={isPositive ? "bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-4" : isNegative ? "bg-red-500/5 border border-red-500/10 rounded-lg p-4" : "bg-yellow-500/5 border border-yellow-500/10 rounded-lg p-4"}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm">{emoji}</span>
+                          <span className="text-sm">{isPositive ? '😊' : isNegative ? '😟' : '😐'}</span>
                           <span className="text-xs font-medium text-white/60">Sentiment</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold text-${color}-400`}>{data.sentiment?.charAt(0).toUpperCase() + data.sentiment?.slice(1)}</span>
-                          {data.confidence && <span className="text-[10px] text-white/30">{(data.confidence * 100).toFixed(0)}%</span>}
+                          <span className={isPositive ? "text-xs font-semibold text-emerald-400" : isNegative ? "text-xs font-semibold text-red-400" : "text-xs font-semibold text-yellow-400"}>
+                            {sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}
+                          </span>
+                          {data.confidence != null && <span className="text-[10px] text-white/30">{(data.confidence * 100).toFixed(0)}%</span>}
                         </div>
                       </div>
                       {data.explanation && <p className="text-xs text-white/40 mt-2">{data.explanation}</p>}
@@ -236,8 +243,12 @@ export default function PipelinesTab({ onExecuted }) {
                 })()}
 
                 {/* Translation */}
-                {result.steps?.find(s => s.server === 'translator' && s.output)?.output && (() => {
-                  const data = result.steps.find(s => s.server === 'translator').output;
+                {(() => {
+                  const step = result.steps?.find(s => s.server === 'translator' && s.output);
+                  if (!step?.output) return null;
+                  const data = step.output;
+                  const text = data.translated_text || data.text || data.result || '';
+                  if (!text) return null;
                   return (
                     <div className="bg-purple-500/5 border border-purple-500/10 rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -246,31 +257,53 @@ export default function PipelinesTab({ onExecuted }) {
                           Translation {data.source_language && data.target_language ? `(${data.source_language} → ${data.target_language})` : ''}
                         </span>
                       </div>
-                      <p className="text-sm text-white/70 leading-relaxed line-clamp-4">{data.translated_text?.slice(0, 500)}{data.translated_text?.length > 500 ? '...' : ''}</p>
+                      <p className="text-sm text-white/70 leading-relaxed">{text.length > 500 ? text.slice(0, 500) + '...' : text}</p>
                     </div>
                   );
                 })()}
 
                 {/* Slack delivery */}
-                {result.steps?.find(s => s.server === 'slack-sender' && s.output)?.output && (() => {
-                  const data = result.steps.find(s => s.server === 'slack-sender').output;
+                {(() => {
+                  const step = result.steps?.find(s => s.server === 'slack-sender' && s.output);
+                  if (!step?.output) return null;
+                  const data = step.output;
                   return (
-                    <div className={`${data.success ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-red-500/5 border-red-500/10'} border rounded-lg p-4`}>
+                    <div className={data.success ? "bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-4" : "bg-red-500/5 border border-red-500/10 rounded-lg p-4"}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm">{data.success ? '✅' : '❌'}</span>
+                          <span className="text-sm">{data.success ? '✅' : '⚠️'}</span>
                           <span className="text-xs font-medium text-white/60">Slack Delivery</span>
                         </div>
-                        <span className="text-xs text-white/30">{data.channel}</span>
+                        <span className="text-xs text-white/30">{data.channel || ''}</span>
                       </div>
-                      {data.error && <p className="text-xs text-red-400/70 mt-1">{data.error}</p>}
                       {data.success && <p className="text-xs text-white/30 mt-1">Message posted to {data.channel}</p>}
+                      {!data.success && data.error && <p className="text-xs text-yellow-400/70 mt-1">Could not deliver: {data.error}</p>}
                     </div>
                   );
                 })()}
 
-                {/* Fallback: show raw JSON if no known step types matched */}
-                {!result.steps?.some(s => ['summarizer', 'sentiment-analyzer', 'translator', 'slack-sender'].includes(s.server) && s.output) && (
+                {/* Web fetcher content preview */}
+                {(() => {
+                  const step = result.steps?.find(s => s.server === 'web-fetcher' && s.output);
+                  if (!step?.output) return null;
+                  const data = step.output;
+                  // Only show if it's the only step with output
+                  const otherOutputs = result.steps?.filter(s => s.server !== 'web-fetcher' && s.output);
+                  if (otherOutputs && otherOutputs.length > 0) return null;
+                  return (
+                    <div className="bg-sky-500/5 border border-sky-500/10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm">🌍</span>
+                        <span className="text-xs font-medium text-sky-400">Fetched Content</span>
+                        {data.source_url && <span className="text-[10px] text-white/20 ml-auto">{data.source_url}</span>}
+                      </div>
+                      <p className="text-sm text-white/70 leading-relaxed">{(data.content || '').slice(0, 300)}{(data.content || '').length > 300 ? '...' : ''}</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Fallback: show raw JSON if nothing else rendered */}
+                {!result.steps?.some(s => ['summarizer', 'sentiment-analyzer', 'translator', 'slack-sender', 'web-fetcher'].includes(s.server) && s.output) && result.final_output && (
                   <pre className="text-xs font-mono text-white/40 bg-black/40 rounded-lg p-3 overflow-auto max-h-40">
                     {JSON.stringify(result.final_output, null, 2)}
                   </pre>

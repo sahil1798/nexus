@@ -282,12 +282,32 @@ async def execute_pipeline(req: PipelineRequest):
         initial_input["url"] = url
     
     # Discover pipeline
-    engine = DiscoveryEngine(registry.servers, graph.edges)
-    pipeline = engine.discover(full_request)
+    try:
+        engine = DiscoveryEngine(registry.servers, graph.edges)
+        pipeline = engine.discover(full_request)
+    except Exception as e:
+        return {
+            "request": req.request,
+            "confidence": 0,
+            "success": False,
+            "total_duration": 0,
+            "steps": [],
+            "final_output": {"error": f"Could not plan pipeline: {str(e)}"},
+        }
     
     # Execute
-    executor = PipelineExecutor(registry.servers)
-    results = await executor.execute(pipeline, initial_input, context, )
+    try:
+        executor = PipelineExecutor(registry.servers)
+        results = await executor.execute(pipeline, initial_input, context, )
+    except Exception as e:
+        return {
+            "request": req.request,
+            "confidence": pipeline.confidence,
+            "success": False,
+            "total_duration": 0,
+            "steps": [],
+            "final_output": {"error": f"Execution error: {str(e)}"},
+        }
     
     # Format response
     step_results = []

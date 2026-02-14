@@ -33,7 +33,7 @@ class PipelineExecutor:
 
     async def execute(self, pipeline: Pipeline, initial_input: dict, context: dict) -> list[ExecutionResult]:
         """
-        Execute a pipeline step by step.
+        Execute a pipeline step by step. Never crashes — always returns results.
         """
         results = []
         current_data = initial_input
@@ -49,57 +49,75 @@ class PipelineExecutor:
             server = self.servers.get(step.server_name)
             if not server:
                 error = f"Server '{step.server_name}' not found"
-                print(f"❌ {error}")
+                print(f"   ❌ {error}")
                 results.append(ExecutionResult(step, current_data, {}, 0, False, error))
-                break
+                continue  # Don't break — try remaining steps
 
-            # Prepare input
-            if step.edge:
-                print(f"   🔄 Translating from previous step...")
-                target_tool = next((t for t in server.tools if t.name == step.tool_name), None)
-                target_schema = target_tool.input_schema if target_tool else {}
-
-                # Special handling for slack-sender: combine all previous outputs
-                if step.server_name == "slack-sender":
-                    step_input = self._build_slack_message(all_outputs, context)
-                else:
-                    spec = self.translation_engine.generate_spec(step.edge, current_data, target_schema)
-                    step_input = self.translation_engine.apply_translation(spec, current_data, context)
-
-                    # Fallback: fill missing required fields from source output
-                    required = target_schema.get("required", [])
-                    TEXT_ALIASES = ["content", "translated_text", "summary", "text", "result"]
-                    for field in required:
-                        if field not in step_input or not step_input[field]:
-                            # Try common text field aliases from source output
-                            if field == "text":
-                                for alias in TEXT_ALIASES:
-                                    if alias in current_data and current_data[alias]:
-                                        step_input["text"] = current_data[alias]
-                                        print(f"   ⚡ Fallback: mapped '{alias}' → 'text'")
-                                        break
-                            # Try exact field name match from source
-                            elif field in current_data:
-                                step_input[field] = current_data[field]
-                                print(f"   ⚡ Fallback: mapped '{field}' directly")
-            else:
-                step_input = current_data
-
-            # Merge context fields needed by the tool
-            for key, value in context.items():
-                if key not in step_input:
+            # Prepare input (wrapped in try/except — never crash on translation)
+            try:
+                if step.edge:
+                    print(f"   🔄 Translating from previous step...")
                     target_tool = next((t for t in server.tools if t.name == step.tool_name), None)
-                    if target_tool and key in str(target_tool.input_schema):
-                        step_input[key] = value
+                    target_schema = target_tool.input_schema if target_tool else {}
 
-            print(f"   📥 Input: {json.dumps(step_input, indent=6)[:300]}...")
+                    # Special handling for slack-sender: combine all previous outputs
+                    if step.server_name == "slack-sender":
+                        step_input = self._build_slack_message(all_outputs, context)
+                    else:
+                        try:
+                            spec = self.translation_engine.generate_spec(step.edge, current_data, target_schema)
+                            step_input = self.translation_engine.apply_translation(spec, current_data, context)
+                        except Exception as te:
+                            print(f"   ⚠️ Translation failed ({te}), using direct mapping")
+                            step_input = {}
+
+                        # Fallback: fill missing required fields from source output
+                        required = target_schema.get("required", [])
+                        TEXT_ALIASES = ["content", "translated_text", "summary", "text", "result"]
+                        for field in required:
+                            if field not in step_input or not step_input[field]:
+                                if field == "text":
+                                    for alias in TEXT_ALIASES:
+                                        if alias in current_data and current_data[alias]:
+                                            step_input["text"] = current_data[alias]
+                                            print(f"   ⚡ Fallback: mapped '{alias}' → 'text'")
+                                            break
+                                    # Last resort: dump all current data as text
+                                    if "text" not in step_input or not step_input["text"]:
+                                        step_input["text"] = json.dumps(current_data, default=str)[:5000]
+                                        print(f"   ⚡ Fallback: used full current_data as text")
+                                elif field == "url":
+                                    # Try to get URL from context or current data
+                                    if "url" in current_data:
+                                        step_input["url"] = current_data["url"]
+                                    elif "source_url" in current_data:
+                                        step_input["url"] = current_data["source_url"]
+                                    print(f"   ⚡ Fallback: mapped url from source")
+                                elif field in current_data:
+                                    step_input[field] = current_data[field]
+                                    print(f"   ⚡ Fallback: mapped '{field}' directly")
+                else:
+                    step_input = dict(current_data)  # Copy to avoid mutation
+
+                # Merge context fields needed by the tool
+                for key, value in context.items():
+                    if key not in step_input:
+                        target_tool = next((t for t in server.tools if t.name == step.tool_name), None)
+                        if target_tool and key in str(target_tool.input_schema):
+                            step_input[key] = value
+
+            except Exception as prep_err:
+                print(f"   ⚠️ Input prep failed: {prep_err}")
+                step_input = dict(current_data)
+
+            print(f"   📥 Input: {json.dumps(step_input, indent=6, default=str)[:300]}...")
 
             # Execute the tool
             start_time = time.time()
             try:
                 output = await self._call_tool(server, step.tool_name, step_input)
                 duration = time.time() - start_time
-                print(f"   📤 Output: {json.dumps(output, indent=6)[:300]}...")
+                print(f"   📤 Output: {json.dumps(output, indent=6, default=str)[:300]}...")
                 print(f"   ⏱️  Duration: {duration:.2f}s")
 
                 results.append(ExecutionResult(step, step_input, output, duration, True))
@@ -111,7 +129,7 @@ class PipelineExecutor:
                 error = str(e)
                 print(f"   ❌ Error: {error}")
                 results.append(ExecutionResult(step, step_input, {}, duration, False, error))
-                break
+                # Don't break — continue with current_data so remaining steps can try
 
         self._print_summary(results)
         return results
