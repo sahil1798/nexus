@@ -29,6 +29,11 @@ def analyze_sentiment(text: str) -> dict:
         - tone_words: List of words describing the emotional tone
         - explanation: Brief explanation of why this sentiment was detected
     """
+    # Truncate very long text to avoid hitting token limits
+    MAX_CHARS = 30000
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS] + "\n\n[Text truncated for analysis]"
+
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=f"""Analyze the sentiment and emotional tone of the following text.
@@ -54,14 +59,21 @@ Text to analyze:
         raw = raw[:-3]
     raw = raw.strip()
 
-    parsed = json.loads(raw)
-
-    return {
-        "sentiment": parsed["sentiment"],
-        "confidence": parsed["confidence"],
-        "tone_words": parsed["tone_words"],
-        "explanation": parsed["explanation"],
-    }
+    try:
+        parsed = json.loads(raw)
+        return {
+            "sentiment": parsed.get("sentiment", "neutral"),
+            "confidence": parsed.get("confidence", 0.5),
+            "tone_words": parsed.get("tone_words", []),
+            "explanation": parsed.get("explanation", raw),
+        }
+    except json.JSONDecodeError:
+        return {
+            "sentiment": "neutral",
+            "confidence": 0.5,
+            "tone_words": [],
+            "explanation": raw,
+        }
 
 
 if __name__ == "__main__":

@@ -28,6 +28,13 @@ def summarize_text(text: str, max_sentences: int = 3) -> dict:
         - original_length: Character count of the original text
         - summary_length: Character count of the summary
     """
+    original_length = len(text)
+
+    # Truncate very long text to avoid hitting token limits
+    MAX_CHARS = 30000
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS] + "\n\n[Text truncated for summarization]"
+
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=f"""Summarize the following text in at most {max_sentences} sentences. 
@@ -52,13 +59,20 @@ Text to summarize:
         raw = raw[:-3]
     raw = raw.strip()
 
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+        summary = parsed.get("summary", raw)
+        key_points = parsed.get("key_points", [])
+    except json.JSONDecodeError:
+        # Fallback: use the raw response as the summary
+        summary = raw
+        key_points = []
 
     return {
-        "summary": parsed["summary"],
-        "key_points": parsed["key_points"],
-        "original_length": len(text),
-        "summary_length": len(parsed["summary"]),
+        "summary": summary,
+        "key_points": key_points,
+        "original_length": original_length,
+        "summary_length": len(summary),
     }
 
 
