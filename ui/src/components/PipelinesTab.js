@@ -21,7 +21,7 @@ export default function PipelinesTab({ onExecuted }) {
   const [request, setRequest] = useState('');
   const [url, setUrl] = useState('');
   const [channel, setChannel] = useState('#general');
-  const [language, setLanguage] = useState('es');
+  const [targetLanguage, setTargetLanguage] = useState('es');
   const [plan, setPlan] = useState(null);
   const [executing, setExecuting] = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -48,7 +48,7 @@ export default function PipelinesTab({ onExecuted }) {
     setResult(null);
     setPlan(null);
     try {
-      const res = await api.executePipeline({ request, url, channel, language });
+      const res = await api.executePipeline({ request, url, channel, source_language: 'auto', target_language: targetLanguage });
       setResult(res.data);
       toast.success('Pipeline executed successfully!');
       onExecuted?.();
@@ -88,8 +88,8 @@ export default function PipelinesTab({ onExecuted }) {
             <Input placeholder="#general" value={channel} onChange={e => setChannel(e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid="pipeline-channel-input" />
           </div>
           <div>
-            <label className="text-[10px] text-white/40 mb-1 block uppercase tracking-wider">Language</label>
-            <Input placeholder="es" value={language} onChange={e => setLanguage(e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid="pipeline-language-input" />
+            <label className="text-[10px] text-white/40 mb-1 block uppercase tracking-wider">Target Language</label>
+            <Input placeholder="es" value={targetLanguage} onChange={e => setTargetLanguage(e.target.value)} className="bg-white/5 border-white/10 text-sm" data-testid="pipeline-language-input" />
           </div>
         </div>
 
@@ -143,11 +143,10 @@ export default function PipelinesTab({ onExecuted }) {
           <div className="space-y-3">
             {displaySteps.map((step, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.12 }}>
-                <div className={`flex items-center gap-4 p-4 rounded-lg border ${
-                  step.success !== undefined
-                    ? step.success ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
-                    : 'bg-white/[0.02] border-white/5'
-                }`} data-testid={`pipeline-step-${i}`}>
+                <div className={`flex items-center gap-4 p-4 rounded-lg border ${step.success !== undefined
+                  ? step.success ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
+                  : 'bg-white/[0.02] border-white/5'
+                  }`} data-testid={`pipeline-step-${i}`}>
                   <div className="flex-shrink-0">
                     {step.success !== undefined ? (
                       step.success
