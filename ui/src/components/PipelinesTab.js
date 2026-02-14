@@ -20,7 +20,7 @@ const EXAMPLES = [
 export default function PipelinesTab({ onExecuted }) {
   const [request, setRequest] = useState('');
   const [url, setUrl] = useState('');
-  const [channel, setChannel] = useState('#general');
+  const [channel, setChannel] = useState('#team-updates');
   const [targetLanguage, setTargetLanguage] = useState('es');
   const [plan, setPlan] = useState(null);
   const [executing, setExecuting] = useState(false);
