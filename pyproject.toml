@@ -1,7 +1,7 @@
 [project]
 name = "nexus"
 version = "0.1.0"
-description = "Add your description here"
+description = "NEXUS — The Intelligent MCP Broker. AI-powered orchestration platform that discovers, connects, and chains MCP servers automatically."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

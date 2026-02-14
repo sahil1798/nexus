@@ -342,7 +342,8 @@ export default function LandingPage() {
           <div className="flex items-center gap-6 text-xs text-white/30">
             <Link to="/docs" className="hover:text-white/60 transition-colors">API Docs</Link>
             <Link to="/dashboard" className="hover:text-white/60 transition-colors">Dashboard</Link>
-            <span>Powered by Gemini 3 Flash</span>
+            <a href="https://archestra.ai" target="_blank" rel="noopener noreferrer" className="hover:text-white/60 transition-colors">Built for Archestra</a>
+            <span>Powered by Gemini 2.0 Flash</span>
           </div>
         </div>
       </footer>

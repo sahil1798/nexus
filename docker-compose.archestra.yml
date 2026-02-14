@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # ──────────────────────────────────────────────
+  # Archestra Platform — MCP Registry & Gateway
+  # ──────────────────────────────────────────────
+  archestra:
+    image: archestra/platform:latest
+    ports:
+      - "9000:9000" # Archestra API / MCP Gateway
+      - "3000:3000" # Archestra Web UI
+    environment:
+      - ARCHESTRA_QUICKSTART=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - archestra-postgres-data:/var/lib/postgresql/data
+      - archestra-app-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ──────────────────────────────────────────────
+  # NEXUS Backend — The Intelligent MCP Broker
+  # ──────────────────────────────────────────────
+  nexus-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - ARCHESTRA_URL=http://archestra:9000
+    depends_on:
+      archestra:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  archestra-postgres-data:
+  archestra-app-data:

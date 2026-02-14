@@ -42,5 +42,8 @@ nexusui/
 # SQLite database (will be created at runtime)
 data/*.db
 
+# NEXUS state file (runtime generated)
+nexus_state.json
+
 # Test files
 test_nexus.py
