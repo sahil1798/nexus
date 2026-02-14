@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 import time
 sys.path.insert(0, '.')
@@ -142,6 +143,7 @@ class PipelineExecutor:
         server_params = StdioServerParameters(
             command=server.command,
             args=server.args,
+            env=dict(os.environ),  # Pass parent env vars (GEMINI_API_KEY, etc.)
         )
 
         async with stdio_client(server_params) as (read, write):
