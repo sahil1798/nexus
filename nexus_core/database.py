@@ -444,7 +444,7 @@ def update_pipeline_run(run_id: int, status: str, result: dict = None, duration:
 
 
 def get_pipeline_history(limit: int = 50) -> list[dict]:
-    """Get recent pipeline runs."""
+    """Get recent pipeline runs with parsed JSON fields."""
     with get_connection() as conn:
         rows = conn.execute("""
             SELECT * FROM pipeline_runs
@@ -452,7 +452,38 @@ def get_pipeline_history(limit: int = 50) -> list[dict]:
             LIMIT ?
         """, (limit,)).fetchall()
         
-    return [dict(row) for row in rows]
+    results = []
+    for row in rows:
+        d = dict(row)
+        
+        # Parse JSON fields
+        if d.get('pipeline_steps'):
+            try:
+                d['steps'] = json.loads(d['pipeline_steps'])
+            except:
+                d['steps'] = []
+                
+        if d.get('result'):
+            try:
+                d['result'] = json.loads(d['result'])
+                # Extract confidence if stored in result
+                if isinstance(d['result'], dict):
+                    d['confidence'] = d['result'].get('confidence', 0.0)
+            except:
+                d['result'] = {}
+                
+        if d.get('context'):
+            try:
+                d['context'] = json.loads(d['context'])
+            except:
+                d['context'] = {}
+                
+        # Map status to success boolean for frontend
+        d['success'] = d['status'] == 'completed'
+        
+        results.append(d)
+        
+    return results
 
 
 # =============================================================================

@@ -330,10 +330,16 @@ async def execute_pipeline(req: PipelineRequest):
     final_output = results[-1].output_data if results else {}
 
     # Save to history
+    history_result = {
+        "steps": step_results,
+        "final_output": final_output,
+        "confidence": pipeline.confidence
+    }
+
     db.update_pipeline_run(
         run_id,
         "completed" if all_success else "partial",
-        {"steps": step_results, "final_output": final_output},
+        history_result,
         round(total_time, 2)
     )
     
