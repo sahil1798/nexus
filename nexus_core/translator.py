@@ -25,11 +25,20 @@ class TranslationEngine:
         # Find required fields from target schema
         required_fields = target_input_schema.get("required", [])
 
+        # Truncate source output values for the prompt — Gemini only needs
+        # to see field names and a preview, not the full content
+        truncated_output = {}
+        for k, v in source_output.items():
+            if isinstance(v, str) and len(v) > 200:
+                truncated_output[k] = v[:200] + "... [truncated]"
+            else:
+                truncated_output[k] = v
+
         prompt = f"""You are a data transformation expert. Generate a mapping specification to transform data from one tool's output to another tool's input.
 
 SOURCE: {edge.source_server}.{edge.source_tool}
 SOURCE OUTPUT (actual data):
-{json.dumps(source_output, indent=2)}
+{json.dumps(truncated_output, indent=2)}
 
 TARGET: {edge.target_server}.{edge.target_tool}
 TARGET INPUT SCHEMA:
@@ -67,7 +76,24 @@ IMPORTANT RULES:
             raw = raw[:-3]
         raw = raw.strip()
 
-        spec = json.loads(raw)
+        try:
+            spec = json.loads(raw)
+        except json.JSONDecodeError:
+            # Fallback: generate a basic direct mapping
+            spec = {
+                "mappings": [
+                    {
+                        "target_field": field,
+                        "source_field": None,
+                        "transformation": "direct",
+                        "source": "output",
+                        "required": True
+                    }
+                    for field in required_fields
+                ],
+                "context_fields_needed": required_fields
+            }
+
         self.specs_cache[cache_key] = spec
         return spec
 
