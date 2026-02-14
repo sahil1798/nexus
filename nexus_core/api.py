@@ -296,10 +296,14 @@ async def execute_pipeline(req: PipelineRequest):
         }
     
     # Execute
+    pipeline_steps_meta = [{"server": s.server_name, "tool": s.tool_name} for s in pipeline.steps]
+    run_id = db.save_pipeline_run(req.request, pipeline_steps_meta, context)
+
     try:
         executor = PipelineExecutor(registry.servers)
         results = await executor.execute(pipeline, initial_input, context, )
     except Exception as e:
+        db.update_pipeline_run(run_id, "failed", {"error": str(e)}, 0)
         return {
             "request": req.request,
             "confidence": pipeline.confidence,
@@ -324,6 +328,14 @@ async def execute_pipeline(req: PipelineRequest):
     all_success = all(r.success for r in results)
     total_time = sum(r.duration for r in results)
     final_output = results[-1].output_data if results else {}
+
+    # Save to history
+    db.update_pipeline_run(
+        run_id,
+        "completed" if all_success else "partial",
+        {"steps": step_results, "final_output": final_output},
+        round(total_time, 2)
+    )
     
     return {
         "request": req.request,
