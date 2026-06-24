@@ -43,6 +43,8 @@ class CapabilityGraph:
         1. Generate embeddings for all tool inputs/outputs (O(N) API calls)
         2. Compute cosine similarity between all pairs (instant, no API calls)
         3. Only call LLM to validate HIGH-SIMILARITY candidates
+        Cycle detection: after each edge is tentatively added we run a DFS;
+        if a cycle is found the edge is discarded.
         """
         if not incremental:
             db.clear_all_edges()
@@ -91,6 +93,13 @@ class CapabilityGraph:
             )
 
             if edge.compatibility_type != "incompatible":
+                # --- Cycle detection: build adjacency on current edges + candidate ---
+                tentative = list(self.edges) + [edge]
+                if self._has_cycle(tentative):
+                    print(f"     ⛔ Skipped (would create cycle): {source_key} → {target_key}")
+                    skipped += 1
+                    continue
+
                 db.save_edge(edge)
                 new_edges += 1
                 symbol = "✅" if edge.compatibility_type == "direct" else "🔄"
@@ -106,6 +115,29 @@ class CapabilityGraph:
         print(f"   Cached edges: {cached_edges}")
         print(f"   Rejected candidates: {skipped}")
         print(f"   Total valid connections: {len(self.edges)}")
+
+    def _has_cycle(self, edges: list) -> bool:
+        """DFS cycle detection on server-level adjacency. Returns True if a cycle exists."""
+        from collections import defaultdict
+        adj = defaultdict(set)
+        for e in edges:
+            adj[e.source_server].add(e.target_server)
+
+        visited, rec_stack = set(), set()
+
+        def dfs(node):
+            visited.add(node)
+            rec_stack.add(node)
+            for neighbour in adj[node]:
+                if neighbour not in visited:
+                    if dfs(neighbour):
+                        return True
+                elif neighbour in rec_stack:
+                    return True
+            rec_stack.discard(node)
+            return False
+
+        return any(dfs(n) for n in list(adj) if n not in visited)
 
     def _evaluate_edge(self, src_server, src_tool, src_profile,
                        tgt_server, tgt_tool, tgt_profile) -> GraphEdge:

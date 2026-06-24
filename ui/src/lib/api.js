@@ -2,10 +2,14 @@ import axios from 'axios';
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000').replace(/\/+$/, '');
 const API = `${BACKEND_URL}/api`;
+const API_KEY = process.env.REACT_APP_NEXUS_API_KEY || '';
 
 const api = axios.create({
   baseURL: API,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'X-API-Key': API_KEY,
+  },
 });
 
 export const getStatus = () => api.get('/status');

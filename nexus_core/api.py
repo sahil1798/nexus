@@ -7,6 +7,8 @@ FastAPI-based HTTP interface for NEXUS operations.
 import asyncio
 import sys
 import os
+import time
+from collections import defaultdict
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -16,15 +18,54 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter
+from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter, Depends, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.security.api_key import APIKeyHeader
+from pydantic import BaseModel, Field, validator
 
 from nexus_core.registry import Registry
 from nexus_core.graph import CapabilityGraph
 from nexus_core.discovery import DiscoveryEngine
 from nexus_core.executor import PipelineExecutor
 from nexus_core import database as db
+
+
+# =============================================================================
+# Security — API Key Auth
+# =============================================================================
+
+_API_KEY = os.getenv("NEXUS_API_KEY", "")
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def require_api_key(api_key: str = Security(_API_KEY_HEADER)):
+    """Dependency that enforces API key on every protected route."""
+    if not _API_KEY:
+        # Key not configured — block all requests so misconfiguration is obvious
+        raise HTTPException(status_code=500, detail="Server misconfiguration: NEXUS_API_KEY not set")
+    if api_key != _API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+
+# =============================================================================
+# Rate Limiter — token bucket per IP
+# =============================================================================
+
+_RATE_LIMIT_RPM = int(os.getenv("NEXUS_RATE_LIMIT_RPM", "20"))   # requests per minute
+_rate_buckets: dict = defaultdict(list)
+
+def _check_rate_limit(request: Request):
+    """Allow max NEXUS_RATE_LIMIT_RPM calls per minute per IP."""
+    ip = request.client.host
+    now = time.time()
+    window = [t for t in _rate_buckets[ip] if now - t < 60]
+    if len(window) >= _RATE_LIMIT_RPM:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute")
+    window.append(now)
+    _rate_buckets[ip] = window
+
+
+# Allowlist of safe executables for MCP server commands
+_COMMAND_ALLOWLIST = {"uv", "python", "python3", "node", "npx", "uvx"}
 
 
 # Global instances
@@ -51,13 +92,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for web UI
+# CORS — restrict to known UI origins (set CORS_ORIGINS env var for production)
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 # API Router with /api prefix (frontend expects all endpoints under /api/)
@@ -72,6 +116,16 @@ class ServerRegistration(BaseModel):
     name: str = Field(..., description="Server name (e.g., 'web-fetcher')")
     command: str = Field(..., description="Command to run server (e.g., 'uv')")
     args: list[str] = Field(..., description="Arguments (e.g., ['run', 'python', 'server.py'])")
+
+    @validator("command")
+    def command_must_be_safe(cls, v):
+        """Reject commands not on the allowlist to prevent RCE."""
+        base_cmd = os.path.basename(v).lower()
+        if base_cmd not in _COMMAND_ALLOWLIST:
+            raise ValueError(
+                f"Command '{v}' is not allowed. Permitted commands: {sorted(_COMMAND_ALLOWLIST)}"
+            )
+        return v
 
 
 class PipelineRequest(BaseModel):
@@ -140,7 +194,7 @@ async def list_servers():
     return {"total": len(servers), "servers": servers}
 
 
-@api_router.post("/servers/register")
+@api_router.post("/servers/register", dependencies=[Depends(require_api_key)])
 async def register_server(req: ServerRegistration, background_tasks: BackgroundTasks):
     """Register a new MCP server."""
     try:
@@ -160,7 +214,7 @@ async def register_server(req: ServerRegistration, background_tasks: BackgroundT
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@api_router.delete("/servers/{name}")
+@api_router.delete("/servers/{name}", dependencies=[Depends(require_api_key)])
 async def unregister_server(name: str):
     """Remove a server from NEXUS."""
     if name not in registry.servers:
@@ -199,9 +253,10 @@ async def get_graph():
     }
 
 
-@api_router.post("/graph/rebuild")
-async def trigger_rebuild(background_tasks: BackgroundTasks):
-    """Trigger a graph rebuild."""
+@api_router.post("/graph/rebuild", dependencies=[Depends(require_api_key)])
+async def trigger_rebuild(request: Request, background_tasks: BackgroundTasks):
+    """Trigger a graph rebuild — rate limited."""
+    _check_rate_limit(request)
     background_tasks.add_task(rebuild_graph)
     return {"status": "rebuild_started", "message": "Graph rebuild started in background."}
 
@@ -241,8 +296,9 @@ async def discover_pipeline(req: DiscoverRequest):
     }
 
 
-@api_router.post("/execute")
-async def execute_pipeline(req: PipelineRequest):
+@api_router.post("/execute", dependencies=[Depends(require_api_key)])
+async def execute_pipeline(req: PipelineRequest, request: Request):
+    _check_rate_limit(request)
     """Discover and execute a pipeline."""
     if not registry.servers:
         raise HTTPException(status_code=400, detail="No servers registered")

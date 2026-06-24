@@ -30,6 +30,8 @@ def get_connection():
     ensure_data_dir()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # SQLite disables foreign keys by default — enable them so ON DELETE CASCADE works
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
         conn.commit()
