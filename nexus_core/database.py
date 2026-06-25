@@ -293,32 +293,37 @@ def server_exists(name: str) -> bool:
 # Edge CRUD Operations
 # =============================================================================
 
-def save_edge(edge: GraphEdge) -> int:
+def save_edge(edge: GraphEdge, conn=None) -> int:
     """Save an edge to the database. Returns the edge ID."""
-    with get_connection() as conn:
-        now = datetime.now(timezone.utc).isoformat()
-        
-        cursor = conn.execute("""
-            INSERT INTO edges 
-            (source_server, source_tool, target_server, target_tool, 
-             compatibility_type, confidence, translation_hint, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(source_server, source_tool, target_server, target_tool) DO UPDATE SET
-                compatibility_type = excluded.compatibility_type,
-                confidence = excluded.confidence,
-                translation_hint = excluded.translation_hint
-        """, (
-            edge.source_server,
-            edge.source_tool,
-            edge.target_server,
-            edge.target_tool,
-            edge.compatibility_type,
-            edge.confidence,
-            edge.translation_hint,
-            now
-        ))
-        
-        return cursor.lastrowid
+    now = datetime.now(timezone.utc).isoformat()
+    if conn is None:
+        with get_connection() as c:
+            return _save_edge_conn(c, edge, now)
+    else:
+        return _save_edge_conn(conn, edge, now)
+
+
+def _save_edge_conn(conn, edge: GraphEdge, now: str) -> int:
+    cursor = conn.execute("""
+        INSERT INTO edges 
+        (source_server, source_tool, target_server, target_tool, 
+         compatibility_type, confidence, translation_hint, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_server, source_tool, target_server, target_tool) DO UPDATE SET
+            compatibility_type = excluded.compatibility_type,
+            confidence = excluded.confidence,
+            translation_hint = excluded.translation_hint
+    """, (
+        edge.source_server,
+        edge.source_tool,
+        edge.target_server,
+        edge.target_tool,
+        edge.compatibility_type,
+        edge.confidence,
+        edge.translation_hint,
+        now
+    ))
+    return cursor.lastrowid
 
 
 def load_all_edges() -> list[GraphEdge]:
@@ -382,15 +387,22 @@ def load_edges_to_server(server_name: str) -> list[GraphEdge]:
     ]
 
 
-def edge_exists(source_server: str, source_tool: str, target_server: str, target_tool: str) -> bool:
+def edge_exists(source_server: str, source_tool: str, target_server: str, target_tool: str, conn=None) -> bool:
     """Check if an edge already exists."""
-    with get_connection() as conn:
-        row = conn.execute("""
-            SELECT 1 FROM edges 
-            WHERE source_server = ? AND source_tool = ? 
-            AND target_server = ? AND target_tool = ?
-        """, (source_server, source_tool, target_server, target_tool)).fetchone()
-        return row is not None
+    if conn is None:
+        with get_connection() as c:
+            return _edge_exists_conn(c, source_server, source_tool, target_server, target_tool)
+    else:
+        return _edge_exists_conn(conn, source_server, source_tool, target_server, target_tool)
+
+
+def _edge_exists_conn(conn, source_server: str, source_tool: str, target_server: str, target_tool: str) -> bool:
+    row = conn.execute("""
+        SELECT 1 FROM edges 
+        WHERE source_server = ? AND source_tool = ? 
+        AND target_server = ? AND target_tool = ?
+    """, (source_server, source_tool, target_server, target_tool)).fetchone()
+    return row is not None
 
 
 def delete_edges_for_server(server_name: str) -> int:
@@ -403,9 +415,13 @@ def delete_edges_for_server(server_name: str) -> int:
         return cursor.rowcount
 
 
-def clear_all_edges() -> int:
+def clear_all_edges(conn=None) -> int:
     """Clear all edges from the database."""
-    with get_connection() as conn:
+    if conn is None:
+        with get_connection() as c:
+            cursor = c.execute("DELETE FROM edges")
+            return cursor.rowcount
+    else:
         cursor = conn.execute("DELETE FROM edges")
         return cursor.rowcount
 

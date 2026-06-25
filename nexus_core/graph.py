@@ -46,68 +46,69 @@ class CapabilityGraph:
         Cycle detection: after each edge is tentatively added we run a DFS;
         if a cycle is found the edge is discarded.
         """
-        if not incremental:
-            db.clear_all_edges()
-            self.edges = []
+        with db.get_connection() as conn:
+            if not incremental:
+                db.clear_all_edges(conn=conn)
+                self.edges = []
 
-        print("\n🔍 Building capability graph...")
+            print("\n🔍 Building capability graph...")
 
-        # Step 1: Build embedding index
-        self.embedding_index.index_all_servers(servers)
+            # Step 1: Build embedding index
+            self.embedding_index.index_all_servers(servers)
 
-        # Step 2: Find candidates via cosine similarity
-        print("\n🔎 Finding candidate connections via embedding similarity...")
-        candidates = self.embedding_index.find_candidates(threshold=0.45)
-        print(f"   Found {len(candidates)} candidate pairs above threshold")
+            # Step 2: Find candidates via cosine similarity
+            print("\n🔎 Finding candidate connections via embedding similarity...")
+            candidates = self.embedding_index.find_candidates(threshold=0.45)
+            print(f"   Found {len(candidates)} candidate pairs above threshold")
 
-        # Step 3: Validate candidates with LLM
-        new_edges = 0
-        cached_edges = 0
-        skipped = 0
+            # Step 3: Validate candidates with LLM
+            new_edges = 0
+            cached_edges = 0
+            skipped = 0
 
-        for source_key, target_key, similarity in candidates:
-            src_server_name, src_tool_name = source_key.split(".", 1)
-            tgt_server_name, tgt_tool_name = target_key.split(".", 1)
+            for source_key, target_key, similarity in candidates:
+                src_server_name, src_tool_name = source_key.split(".", 1)
+                tgt_server_name, tgt_tool_name = target_key.split(".", 1)
 
-            # Check if already in database
-            if incremental and db.edge_exists(src_server_name, src_tool_name, tgt_server_name, tgt_tool_name):
-                cached_edges += 1
-                continue
-
-            # Get tool objects
-            src_server = servers.get(src_server_name)
-            tgt_server = servers.get(tgt_server_name)
-            if not src_server or not tgt_server:
-                continue
-
-            src_tool = next((t for t in src_server.tools if t.name == src_tool_name), None)
-            tgt_tool = next((t for t in tgt_server.tools if t.name == tgt_tool_name), None)
-            if not src_tool or not tgt_tool:
-                continue
-
-            print(f"   🔬 Validating: {source_key} → {target_key} (similarity: {similarity:.2f})")
-
-            edge = self._evaluate_edge(
-                src_server_name, src_tool, src_server.semantic_profile,
-                tgt_server_name, tgt_tool, tgt_server.semantic_profile,
-            )
-
-            if edge.compatibility_type != "incompatible":
-                # --- Cycle detection: build adjacency on current edges + candidate ---
-                tentative = list(self.edges) + [edge]
-                if self._has_cycle(tentative):
-                    print(f"     ⛔ Skipped (would create cycle): {source_key} → {target_key}")
-                    skipped += 1
+                # Check if already in database
+                if incremental and db.edge_exists(src_server_name, src_tool_name, tgt_server_name, tgt_tool_name, conn=conn):
+                    cached_edges += 1
                     continue
 
-                db.save_edge(edge)
-                new_edges += 1
-                symbol = "✅" if edge.compatibility_type == "direct" else "🔄"
-                print(f"     {symbol} {edge.compatibility_type} (confidence: {edge.confidence})")
-            else:
-                skipped += 1
+                # Get tool objects
+                src_server = servers.get(src_server_name)
+                tgt_server = servers.get(tgt_server_name)
+                if not src_server or not tgt_server:
+                    continue
 
-        # Reload from database for consistency
+                src_tool = next((t for t in src_server.tools if t.name == src_tool_name), None)
+                tgt_tool = next((t for t in tgt_server.tools if t.name == tgt_tool_name), None)
+                if not src_tool or not tgt_tool:
+                    continue
+
+                print(f"   🔬 Validating: {source_key} → {target_key} (similarity: {similarity:.2f})")
+
+                edge = self._evaluate_edge(
+                    src_server_name, src_tool, src_server.semantic_profile,
+                    tgt_server_name, tgt_tool, tgt_server.semantic_profile,
+                )
+
+                if edge.compatibility_type != "incompatible":
+                    # --- Cycle detection: build adjacency on current edges + candidate ---
+                    tentative = list(self.edges) + [edge]
+                    if self._has_cycle(tentative):
+                        print(f"     ⛔ Skipped (would create cycle): {source_key} → {target_key}")
+                        skipped += 1
+                        continue
+
+                    db.save_edge(edge, conn=conn)
+                    new_edges += 1
+                    symbol = "✅" if edge.compatibility_type == "direct" else "🔄"
+                    print(f"     {symbol} {edge.compatibility_type} (confidence: {edge.confidence})")
+                else:
+                    skipped += 1
+
+        # Reload from database for consistency (after transaction commits)
         self.edges = db.load_all_edges()
 
         print(f"\n📊 Graph build complete:")

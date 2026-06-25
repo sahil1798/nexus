@@ -8,6 +8,8 @@ import asyncio
 import sys
 import os
 import time
+import platform
+from datetime import datetime, timezone
 from collections import defaultdict
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -57,11 +59,27 @@ def _check_rate_limit(request: Request):
     """Allow max NEXUS_RATE_LIMIT_RPM calls per minute per IP."""
     ip = request.client.host
     now = time.time()
+    
+    # Clean up current IP's bucket
     window = [t for t in _rate_buckets[ip] if now - t < 60]
     if len(window) >= _RATE_LIMIT_RPM:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded — try again in a minute")
+        # Prevent timing side-channel timing analysis by returning a static Retry-After interval
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — try again in a minute",
+            headers={"Retry-After": "60"}
+        )
+    
     window.append(now)
     _rate_buckets[ip] = window
+
+    # Periodically clean up the in-memory cache to prevent memory exhaustion DoS
+    # We clean up once every 100 calls
+    _check_rate_limit.counter = getattr(_check_rate_limit, "counter", 0) + 1
+    if _check_rate_limit.counter % 100 == 0:
+        expired_ips = [k for k, v in _rate_buckets.items() if not any(now - t < 60 for t in v)]
+        for expired_ip in expired_ips:
+            _rate_buckets.pop(expired_ip, None)
 
 
 # Allowlist of safe executables for MCP server commands
@@ -105,7 +123,7 @@ app.add_middleware(
 )
 
 # API Router with /api prefix (frontend expects all endpoints under /api/)
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter(prefix="/api", dependencies=[Depends(require_api_key)])
 
 
 # =============================================================================
@@ -119,12 +137,40 @@ class ServerRegistration(BaseModel):
 
     @validator("command")
     def command_must_be_safe(cls, v):
-        """Reject commands not on the allowlist to prevent RCE."""
-        base_cmd = os.path.basename(v).lower()
+        """Reject commands not on the allowlist to prevent RCE and directory traversal."""
+        # Block path separators and drive letters to prevent custom executable path hijacking
+        if "/" in v or "\\" in v or ":" in v:
+            raise ValueError("Command must not contain path separators or drive letters.")
+        
+        # Check against allowlist (removing .exe suffix if present)
+        base_cmd = v.lower()
+        if base_cmd.endswith(".exe"):
+            base_cmd = base_cmd[:-4]
+            
         if base_cmd not in _COMMAND_ALLOWLIST:
             raise ValueError(
                 f"Command '{v}' is not allowed. Permitted commands: {sorted(_COMMAND_ALLOWLIST)}"
             )
+        return v
+
+    @validator("args")
+    def args_must_be_safe(cls, v):
+        """Reject dangerous arguments containing shell metacharacters or execution flags."""
+        dangerous_chars = {";", "&", "|", "$", "`", "\n", "\r", "<", ">", "(", ")"}
+        dangerous_flags = {"-c", "-m", "-e", "--eval", "eval", "exec"}
+        
+        for arg in v:
+            # Check for shell metacharacters
+            if any(char in arg for char in dangerous_chars):
+                raise ValueError(f"Argument '{arg}' contains dangerous shell characters.")
+            
+            # Check for python/node execution flags
+            if arg.lower() in dangerous_flags:
+                raise ValueError(f"Argument '{arg}' contains a forbidden execution flag.")
+                
+            # Prevent directory traversal in args
+            if ".." in arg:
+                raise ValueError(f"Argument '{arg}' contains directory traversal '..'.")
         return v
 
 
@@ -147,6 +193,94 @@ class DiscoverRequest(BaseModel):
 @app.get("/")
 async def app_root():
     return {"service": "NEXUS", "status": "healthy", "docs": "/docs"}
+
+_START_TIME = time.time()
+
+def _format_duration(seconds: float) -> str:
+    s = int(seconds)
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}h {m}m {s}s"
+    elif m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+@app.get("/health")
+async def health_check():
+    """Detailed health check for production environment."""
+    uptime_sec = time.time() - _START_TIME
+    
+    # Process memory
+    proc_mem = "unknown"
+    try:
+        pid = os.getpid()
+        out = os.popen(f'wmic process where ProcessId={pid} get WorkingSetSize /Value').read()
+        for line in out.splitlines():
+            if "WorkingSetSize" in line:
+                bytes_used = int(line.split("=", 1)[1].strip())
+                proc_mem = f"{round(bytes_used / 1024 / 1024, 2)} MB"
+    except Exception:
+        pass
+
+    # System memory
+    sys_mem = {"total": "unknown", "free": "unknown", "used": "unknown"}
+    try:
+        out = os.popen('wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value').read()
+        lines = [line.strip() for line in out.splitlines() if "=" in line]
+        data = dict(line.split("=", 1) for line in lines)
+        free_kb = int(data.get("FreePhysicalMemory", 0))
+        total_kb = int(data.get("TotalVisibleMemorySize", 0))
+        used_kb = total_kb - free_kb
+        sys_mem = {
+            "total": f"{round(total_kb / 1024 / 1024, 2)} GB",
+            "free": f"{round(free_kb / 1024 / 1024, 2)} GB",
+            "used": f"{round(used_kb / 1024 / 1024, 2)} GB"
+        }
+    except Exception:
+        pass
+
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat() if hasattr(timezone, "utc") else datetime.utcnow().isoformat() + "Z",
+        "uptime": {
+            "seconds": int(uptime_sec),
+            "formatted": _format_duration(uptime_sec),
+        },
+        "server": {
+            "pythonVersion": platform.python_version(),
+            "platform": platform.system(),
+            "arch": platform.machine(),
+            "cpus": os.cpu_count(),
+            "memory": {
+                "processMemory": proc_mem
+            },
+            "systemMemory": sys_mem
+        },
+        "environment": os.getenv("NODE_ENV", "production")
+    }
+
+@app.get("/health/simple")
+async def health_simple():
+    """Simple text response for load balancers."""
+    return "OK"
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe checking registry and graph initialization."""
+    is_ready = registry is not None and graph is not None
+    if is_ready:
+        return {"ready": True, "state": "success"}
+    else:
+        raise HTTPException(
+            status_code=503,
+            detail={"ready": False, "state": "initializing", "reason": "Registry or graph not initialized"}
+        )
+
+@app.get("/health/live")
+async def health_live():
+    """Liveness probe indicating process is active."""
+    return {"alive": True, "timestamp": datetime.now(timezone.utc).isoformat() if hasattr(timezone, "utc") else datetime.utcnow().isoformat() + "Z"}
 
 @api_router.get("/")
 async def root():
@@ -194,7 +328,7 @@ async def list_servers():
     return {"total": len(servers), "servers": servers}
 
 
-@api_router.post("/servers/register", dependencies=[Depends(require_api_key)])
+@api_router.post("/servers/register")
 async def register_server(req: ServerRegistration, background_tasks: BackgroundTasks):
     """Register a new MCP server."""
     try:
@@ -214,7 +348,7 @@ async def register_server(req: ServerRegistration, background_tasks: BackgroundT
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@api_router.delete("/servers/{name}", dependencies=[Depends(require_api_key)])
+@api_router.delete("/servers/{name}")
 async def unregister_server(name: str):
     """Remove a server from NEXUS."""
     if name not in registry.servers:
@@ -253,7 +387,7 @@ async def get_graph():
     }
 
 
-@api_router.post("/graph/rebuild", dependencies=[Depends(require_api_key)])
+@api_router.post("/graph/rebuild")
 async def trigger_rebuild(request: Request, background_tasks: BackgroundTasks):
     """Trigger a graph rebuild — rate limited."""
     _check_rate_limit(request)
@@ -296,7 +430,7 @@ async def discover_pipeline(req: DiscoverRequest):
     }
 
 
-@api_router.post("/execute", dependencies=[Depends(require_api_key)])
+@api_router.post("/execute")
 async def execute_pipeline(req: PipelineRequest, request: Request):
     _check_rate_limit(request)
     """Discover and execute a pipeline."""
