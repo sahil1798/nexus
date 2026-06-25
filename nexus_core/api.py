@@ -59,27 +59,33 @@ def _check_rate_limit(request: Request):
     """Allow max NEXUS_RATE_LIMIT_RPM calls per minute per IP."""
     ip = request.client.host
     now = time.time()
-    
-    # Clean up current IP's bucket
+
+    # Clean up current IP's bucket and check limit
     window = [t for t in _rate_buckets[ip] if now - t < 60]
     if len(window) >= _RATE_LIMIT_RPM:
-        # Prevent timing side-channel timing analysis by returning a static Retry-After interval
+        # Prevent timing side-channel analysis by returning a static Retry-After interval
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded — try again in a minute",
             headers={"Retry-After": "60"}
         )
-    
+
     window.append(now)
     _rate_buckets[ip] = window
 
-    # Periodically clean up the in-memory cache to prevent memory exhaustion DoS
-    # We clean up once every 100 calls
-    _check_rate_limit.counter = getattr(_check_rate_limit, "counter", 0) + 1
-    if _check_rate_limit.counter % 100 == 0:
-        expired_ips = [k for k, v in _rate_buckets.items() if not any(now - t < 60 for t in v)]
-        for expired_ip in expired_ips:
-            _rate_buckets.pop(expired_ip, None)
+
+async def _rate_limit_gc_loop():
+    """Background coroutine: prunes stale IP buckets every 60 seconds.
+    Replaces the risky 100-request manual GC counter that allowed memory
+    exhaustion by stopping at exactly the 99th request.
+    """
+    while True:
+        await asyncio.sleep(60)
+        now = time.time()
+        expired = [ip for ip, timestamps in list(_rate_buckets.items())
+                   if not any(now - t < 60 for t in timestamps)]
+        for ip in expired:
+            _rate_buckets.pop(ip, None)
 
 
 # Allowlist of safe executables for MCP server commands
@@ -93,13 +99,24 @@ graph: CapabilityGraph = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load state on startup."""
+    """Load state on startup, clean up on shutdown."""
     global registry, graph
     print("🚀 Starting NEXUS API...")
     registry = Registry(use_cache=True)
     graph = CapabilityGraph(use_cache=True)
     print(f"   Loaded {len(registry.servers)} servers, {len(graph.edges)} edges")
+
+    # Start background rate-limiter GC task (replaces risky 100-request counter)
+    gc_task = asyncio.create_task(_rate_limit_gc_loop())
+
     yield
+
+    # Cancel the background GC task cleanly on shutdown
+    gc_task.cancel()
+    try:
+        await gc_task
+    except asyncio.CancelledError:
+        pass
     print("👋 Shutting down NEXUS API...")
 
 
@@ -487,13 +504,17 @@ async def execute_pipeline(req: PipelineRequest, request: Request):
     
     # Execute
     pipeline_steps_meta = [{"server": s.server_name, "tool": s.tool_name} for s in pipeline.steps]
-    run_id = db.save_pipeline_run(req.request, pipeline_steps_meta, context)
+    run_id = await asyncio.to_thread(
+        db.save_pipeline_run, req.request, pipeline_steps_meta, context
+    )
 
     try:
         executor = PipelineExecutor(registry.servers)
         results = await executor.execute(pipeline, initial_input, context, )
     except Exception as e:
-        db.update_pipeline_run(run_id, "failed", {"error": str(e)}, 0)
+        await asyncio.to_thread(
+            db.update_pipeline_run, run_id, "failed", {"error": str(e)}, 0
+        )
         return {
             "request": req.request,
             "confidence": pipeline.confidence,
@@ -526,7 +547,8 @@ async def execute_pipeline(req: PipelineRequest, request: Request):
         "confidence": pipeline.confidence
     }
 
-    db.update_pipeline_run(
+    await asyncio.to_thread(
+        db.update_pipeline_run,
         run_id,
         "completed" if all_success else "partial",
         history_result,
@@ -548,10 +570,20 @@ async def execute_pipeline(req: PipelineRequest, request: Request):
 # =============================================================================
 
 @api_router.get("/history")
-async def get_pipeline_history(limit: int = 20):
-    """Get recent pipeline execution history."""
-    history = db.get_pipeline_history(limit=limit)
-    return {"total": len(history), "runs": history}
+async def get_pipeline_history(
+    limit: int = 20,
+    offset: int = 0,
+):
+    """Get paginated pipeline execution history.
+
+    Query params:
+      - limit: max records to return (1–100, default 20)
+      - offset: number of records to skip (default 0)
+    """
+    limit = max(1, min(limit, 100))   # clamp between 1 and 100
+    offset = max(0, offset)
+    history = await asyncio.to_thread(db.get_pipeline_history, limit, offset)
+    return {"total": len(history), "limit": limit, "offset": offset, "runs": history}
 
 
 # =============================================================================

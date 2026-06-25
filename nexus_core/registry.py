@@ -71,15 +71,43 @@ class Registry:
 
                 tools_response = await session.list_tools()
 
+                # === Resource limits — prevent billing-drain via massive schemas ===
+                _MAX_TOOLS = 30
+                _MAX_DESC_LEN = 1000
+                _MAX_SCHEMA_LEN = 5000
+
+                raw_tools = tools_response.tools
+                if len(raw_tools) > _MAX_TOOLS:
+                    raise ValueError(
+                        f"Server '{name}' exposes {len(raw_tools)} tools, "
+                        f"which exceeds the maximum allowed limit of {_MAX_TOOLS}."
+                    )
+
                 tools = []
-                for tool in tools_response.tools:
+                for tool in raw_tools:
+                    desc = tool.description or ""
+                    if len(desc) > _MAX_DESC_LEN:
+                        raise ValueError(
+                            f"Tool '{tool.name}' description length ({len(desc)}) "
+                            f"exceeds the maximum allowed {_MAX_DESC_LEN} characters."
+                        )
+
+                    schema = tool.inputSchema if tool.inputSchema else {}
+                    schema_json = json.dumps(schema)
+                    if len(schema_json) > _MAX_SCHEMA_LEN:
+                        raise ValueError(
+                            f"Tool '{tool.name}' input schema size ({len(schema_json)} chars) "
+                            f"exceeds the maximum allowed {_MAX_SCHEMA_LEN} characters."
+                        )
+
                     tool_schema = ToolInfo(
                         name=tool.name,
-                        description=tool.description or "",
-                        input_schema=tool.inputSchema if tool.inputSchema else {},
+                        description=desc,
+                        input_schema=schema,
                     )
                     tools.append(tool_schema)
                     print(f"   🔧 Found tool: {tool.name}")
+
 
         # Create server record
         record = ServerRecord(

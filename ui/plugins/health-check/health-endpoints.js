@@ -128,20 +128,8 @@ function setupHealthEndpoints(devServer, healthPlugin) {
     });
   });
 
-  // ====================================================================
-  // GET /health/errors - Get current errors and warnings
-  // ====================================================================
-  devServer.app.get("/health/errors", (req, res) => {
-    const webpackStatus = healthPlugin.getStatus();
-
-    res.json({
-      errorCount: webpackStatus.errorCount,
-      warningCount: webpackStatus.warningCount,
-      errors: webpackStatus.errors,
-      warnings: webpackStatus.warnings,
-      state: webpackStatus.state,
-    });
-  });
+  // NOTE: /health/errors is intentionally omitted — it exposed raw compilation
+  // tracebacks and exception context which could leak sensitive pipeline data.
 
   // ====================================================================
   // GET /health/stats - Compilation statistics
@@ -170,7 +158,6 @@ function setupHealthEndpoints(devServer, healthPlugin) {
   console.log('  • GET /health/simple  - Simple OK/ERROR');
   console.log('  • GET /health/ready   - Readiness check');
   console.log('  • GET /health/live    - Liveness check');
-  console.log('  • GET /health/errors  - Error details');
   console.log('  • GET /health/stats   - Statistics');
 }
 

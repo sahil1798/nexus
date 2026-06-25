@@ -430,22 +430,49 @@ def clear_all_edges(conn=None) -> int:
 # Pipeline Run Operations
 # =============================================================================
 
+# Sensitive key patterns to redact from persisted pipeline data
+_SENSITIVE_KEYS = {
+    "api_key", "apikey", "token", "password", "passwd", "secret",
+    "auth", "authorization", "credential", "credentials", "email",
+    "x-api-key", "x_api_key", "access_key", "private_key",
+}
+
+
+def _sanitize_value(value):
+    """Recursively mask sensitive keys in dicts and lists before DB persistence."""
+    if isinstance(value, dict):
+        sanitized = {}
+        for k, v in value.items():
+            if k.lower() in _SENSITIVE_KEYS:
+                sanitized[k] = "[REDACTED]"
+            else:
+                sanitized[k] = _sanitize_value(v)
+        return sanitized
+    elif isinstance(value, list):
+        return [_sanitize_value(item) for item in value]
+    return value
+
+
 def save_pipeline_run(request: str, steps: list, context: dict, status: str = "pending") -> int:
-    """Save a pipeline run. Returns the run ID."""
+    """Save a pipeline run with sanitized data. Returns the run ID."""
     with get_connection() as conn:
         now = datetime.now(timezone.utc).isoformat()
-        
+
+        # Sanitize context to strip credentials/PII before persisting
+        safe_context = _sanitize_value(context) if context else {}
+        safe_steps = _sanitize_value(steps) if steps else []
+
         cursor = conn.execute("""
             INSERT INTO pipeline_runs (request, pipeline_steps, context, status, started_at)
             VALUES (?, ?, ?, ?, ?)
         """, (
             request,
-            json.dumps(steps),
-            json.dumps(context),
+            json.dumps(safe_steps),
+            json.dumps(safe_context),
             status,
             now
         ))
-        
+
         return cursor.lastrowid
 
 
@@ -461,26 +488,35 @@ def update_pipeline_run(run_id: int, status: str, result: dict = None, duration:
         """, (status, json.dumps(result) if result else None, duration, now, run_id))
 
 
-def get_pipeline_history(limit: int = 50) -> list[dict]:
-    """Get recent pipeline runs with parsed JSON fields."""
+def get_pipeline_history(limit: int = 20, offset: int = 0) -> list[dict]:
+    """Get paginated pipeline runs with parsed JSON fields.
+    
+    Args:
+        limit: Maximum number of runs to return (default 20, max 100).
+        offset: Number of records to skip for pagination.
+    """
+    # Enforce a hard cap to prevent unbounded fetches that cause OOM
+    limit = min(limit, 100)
+    offset = max(offset, 0)
+
     with get_connection() as conn:
         rows = conn.execute("""
             SELECT * FROM pipeline_runs
             ORDER BY started_at DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
-        
+            LIMIT ? OFFSET ?
+        """, (limit, offset)).fetchall()
+
     results = []
     for row in rows:
         d = dict(row)
-        
+
         # Parse JSON fields
         if d.get('pipeline_steps'):
             try:
                 d['steps'] = json.loads(d['pipeline_steps'])
             except:
                 d['steps'] = []
-                
+
         if d.get('result'):
             try:
                 d['result'] = json.loads(d['result'])
@@ -489,18 +525,18 @@ def get_pipeline_history(limit: int = 50) -> list[dict]:
                     d['confidence'] = d['result'].get('confidence', 0.0)
             except:
                 d['result'] = {}
-                
+
         if d.get('context'):
             try:
                 d['context'] = json.loads(d['context'])
             except:
                 d['context'] = {}
-                
+
         # Map status to success boolean for frontend
         d['success'] = d['status'] == 'completed'
-        
+
         results.append(d)
-        
+
     return results
 
 
